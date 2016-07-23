@@ -1,6 +1,6 @@
-  * `latest` latest public (as described here) [![](https://badge.imagelayers.io/wernight/plex-media-server:latest.svg)](https://imagelayers.io/?images=wernight/plex-media-server:latest 'Get your own badge on imagelayers.io')
-  * `autoupdate` installs latest on start (see below for differences) [![](https://badge.imagelayers.io/wernight/plex-media-server:autoupdate.svg)](https://imagelayers.io/?images=wernight/plex-media-server:autoupdate 'Get your own badge on imagelayers.io')
-  * `0`, `0.9`, `0.9.14`, `0.9.14.6` (or similar) are like `latest` but for a specific version [![](https://badge.imagelayers.io/wernight/plex-media-server:0.svg)](https://imagelayers.io/?images=wernight/plex-media-server:0 'Get your own badge on imagelayers.io')
+  * `latest` latest public (as described here)
+  * `autoupdate` installs latest on start (see below for differences)
+  * `0`, `0.9`, `0.9.15`, `0.9.15.6` (or similar) are like `latest` but for a specific version
 
 Dockerized [Plex Media Server](https://plex.tv/): Plex organizes your video, music, and photo collections and streams them to all of your screens (mobile, TV/Chromecast, laptop...).
 
@@ -20,10 +20,45 @@ Example:
 
 Once done, wait a few seconds and open `http://localhost:32400/web` in your browser.
 
-The flag `--net=host` is only required for the first run, so that your can login locally without password (without SSH proxy) and see the "Server" tab in the web UI (see troubleshooting section below). If you want **Avahi broadcast** to work then keep `--net=host` even after being logged in, but this will be somewhat less secure.
+The flag `--net=host` is only required for the first run, so that your can login locally without password (without SSH proxy) and see the "Server" tab in the web UI (see troubleshooting section below). Alternatively you can provide `X_PLEX_TOKEN`, or `PLEX_LOGIN` and `PLEX_PASSWORD` (see below). If you want **Avahi broadcast** to work then keep `--net=host` even after being logged in, but this will be somewhat less secure.
+
+To [find your X-Plex-Token](https://support.plex.tv/hc/en-us/articles/204059436-Finding-your-account-token-X-Plex-Token) a helper script has been provided, just run:
+
+    $ docker run --rm -it wernight/plex-media-server retrieve-plex-token
 
 The `--restart=always` is optional, it'll for example allow auto-start on boot.
 
+Depending on what you're streaming to, you may want to open more ports.
+Example of [`docker-compose.yml`](https://docs.docker.com/compose/compose-file/) with a
+[complete list of ports used by Plex](https://support.plex.tv/hc/en-us/articles/201543147-What-network-ports-do-I-need-to-allow-through-my-firewall-):
+
+    version: '2'
+    plex:
+      image: wernight/plex-media-server:autoupdate
+      ports:
+        # for access to the Plex Media Server [required]
+        - "32400:32400"
+        # for access to the Plex DLNA Server
+        - "1900:1900/udp"
+        - "32469:32469"
+        # for controlling Plex Home Theater via Plex Companion
+        - "3005:3005"
+        # for older Bonjour/Avahi network discovery
+        - "5353:5353/udp"
+        # for controlling Plex for Roku via Plex Companion
+        - "8324:8324"
+        # for current GDM network discovery
+        - "32410:32410/udp"
+        - "32412:32412/udp"
+        - "32413:32413/udp"
+        - "32414:32414/udp"
+      volumes:
+        - ./config:/config
+        - ./media:/media
+      #environment:
+      #  - X_PLEX_TOKEN=MY_X_PLEX_TOKEN
+      #network_mode: host
+      #restart: always
 
 ### Features
 
@@ -39,7 +74,7 @@ The `--restart=always` is optional, it'll for example allow auto-start on boot.
 Image                        | Size                 | [Runs As]  | [PID 1 Reap] | [Slim Container] | [Plex Pass]
 ---------------------------- | -------------------- | ---------- | ------------ | ---------------- | -----------
 [wernight/plex-media-server] | ![][img-wernight]    | **user**   | **Safe**     | **Yes**          | **Supported**
-[linuxserver/plex]           | ![][img-linuxserver] | **user**   | **Safe**     | No               | Supported<sup>[1](#footnote1)</sup>
+[linuxserver/plex]           | ![][img-linuxserver] | **user**   | **Safe**     | No               | **Supported**
 [timhaak/plex]               | ![][img-timhaak]     | root       | Unsafe       | No               | Supported<sup>[1](#footnote1)</sup>
 [needo/plex]                 | ![][img-needo]       | root       | **Safe**     | No               | Supported<sup>[1](#footnote1)</sup>
 [binhex/arch-plex]           | ![][img-binhex]      | root       | Unsafe       | No               | No
@@ -67,19 +102,31 @@ There are two ways to keep up to date:
   * Using `wernight/plex-media-server:latest` (default) – To upgrade to the latest public version do again a `docker pull wernight/plex-media-server` and restart your container; that should be it. You may use a *tagged version* to use a fixed or older version as well. It works as described here.
   * Using `wernight/plex-media-server:autoupdate` (for users who want the really latest) – Installs the latest public or **Plex Pass** release each time the container starts. It has a few differences compared to what is described here:
       * Runs as `root` initially so it can install Plex (required), after that it runs as `plex` user.
-      * Supports PlexPass: Premium users get to download newer versions shortly before they get public. For that set two additional environment variables (only be used to retrieve the latest official download URL and cleared after that) like:
+      * Supports PlexPass: Premium users get to download newer versions shortly before they get public. For that either specify `PLEX_LOGIN` and `PLEX_PASSWORD` or preferably `X_PLEX_TOKEN`:
 
-            $ docker run -d --restart=always -v ~/plex-config:/config -v ~/Movies:/media --net=host -p 32400:32400 -e PLEXPASS_LOGIN='<my_plex_login>' -e PLEXPASS_PASSWORD='<my_plex_password>' wernight/plex-media-server:autoupdate
+            $ docker run -d --restart=always -v ~/plex-config:/config -v ~/Movies:/media --net=host -p 32400:32400 -e X_PLEX_TOKEN='<my_x_plex_token>' wernight/plex-media-server:autoupdate
+
+        Alternatively you can specify your Plex login/password (only be used to retrieve the latest official download URL and cleared after that) like:
+
+            $ docker run -d --restart=always -v ~/plex-config:/config -v ~/Movies:/media --net=host -p 32400:32400 -e PLEX_LOGIN='<my_plex_login>' -e PLEX_PASSWORD='<my_plex_password>' wernight/plex-media-server:autoupdate
 
 
 ### Environment Variables
 
 You can change some settings by setting environement variables:
 
+  * `X_PLEX_TOKEN` is your X-Plex-Token (a safer alternative to `PLEX_LOGIN` and `PLEX_PASSWORD`) used to *register your server* without having to access your Plex Server settings via the web UI, see [Finding your account token / X-Plex-Token](https://support.plex.tv/hc/en-us/articles/204059436).
+  * `PLEX_LOGIN` your Plex username or e-mail (as alternative to `X_PLEX_TOKEN`).
+  * `PLEX_PASSWORD` your Plex password (as alternative to `X_PLEX_TOKEN`).
+  * `PLEX_EXTERNAL_PORT` is the external port number (accessible from the internet) to reach your Plex server (default is 32400).
   * `PLEX_MEDIA_SERVER_MAX_STACK_SIZE` ulimit stack size (default: 3000).
   * `PLEX_MEDIA_SERVER_MAX_PLUGIN_PROCS` the number of plugins that can run at the same time (default: 6).
-  * `PLEXPASS_LOGIN` your Plex Pass username or e-mail (used only on the `:autoupdate` tagged image).
-  * `PLEXPASS_PASSWORD` your Plex Pass password (used only on the `:autoupdate` tagged image).
+
+Additional setting environement variables for the `:autoupdate` tagged image:
+
+  * `X_PLEX_TOKEN` or `PLEX_LOGIN` and `PLEX_PASSWORD` are also used to *retrieve latest PlexPass* version (if you have access).
+  * `PLEX_SKIP_UPDATE` can be set to `true` to skip completely the install of latest Plex.
+  * `PLEX_FORCE_DOWNLOAD_URL` can be set to a URL to force downloading and installing a given Plex Linux package for Debian 64-bit.
 
 
 ### Troubleshooting
@@ -117,4 +164,3 @@ Having more issues? [Report a bug on GitHub](https://github.com/wernight/docker-
 [img-timhaak]: https://badge.imagelayers.io/timhaak/plex:latest.svg
 [img-needo]: https://badge.imagelayers.io/needo/plex:latest.svg
 [img-binhex]: https://badge.imagelayers.io/binhex/arch-plex:latest.svg
-
